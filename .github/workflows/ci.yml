@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: fmt, clippy, test
+    runs-on: ubuntu-latest
+    steps:
+      # If this marketplace action hits startup_failure, replace it with a
+      # `run:` clone of $GITHUB_REPOSITORY at $GITHUB_SHA (see PR notes).
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install X11/xcb headers (xcap compile, even if tests are mock)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config \
+            libxcb1-dev \
+            libxrandr-dev \
+            libdbus-1-dev \
+            libxcb-randr0-dev \
+            libxcb-shape0-dev \
+            libxcb-xfixes0-dev \
+            libxcb-shm0-dev
+
+      # Avoid actions-rs / dtolnay toolchain actions (marketplace startup_failure
+      # in the owner's other repos). rustup on the runner is enough.
+      - name: Install Rust
+        run: |
+          set -euo pipefail
+          if ! command -v cargo >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+            export PATH="$HOME/.cargo/bin:$PATH"
+          fi
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup component add rustfmt clippy
+          rustc --version
+          cargo --version
+
+      - name: rustfmt
+        run: cargo fmt --all -- --check
+
+      - name: clippy
+        run: cargo clippy -p zenclip --all-targets --all-features -- -D warnings
+
+      - name: test
+        run: cargo test -p zenclip --all-features -- --test-threads=1
+
+      - name: mock dry-run
+        run: cargo run -p zenclip -- --mock --dry-run shot --full

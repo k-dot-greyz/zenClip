@@ -4,12 +4,12 @@ dex_type: "tool"
 midi_2_0_context:
   resource_type: "Tool"
   property_exchange_id: "urn:zenos:tools:zenclip"
-status: "spec-complete"
-tags: ["clipboard", "midi", "rust", "dedup", "sha256", "self-hosted", "zenOS", "api"]
+status: "prototype"
+tags: ["capture", "png", "sanitize", "exif", "privacy", "rust", "self-hosted", "zenOS", "wysiwyg"]
 ---
 
 # zenClip — dex entry
 
-Clipboard media monitor microservice. SHA256 dedup. MIDI CC emit. Self-hosted REST API.
+WYSIWYG media yoink. Capture or re-render pixels, emit a metadata-free PNG, ingest by SHA256 into a local inbox (pluggable sink).
 
-See README.md for full spec.
+The earlier clipboard→MIDI description is superseded. See README.md.
