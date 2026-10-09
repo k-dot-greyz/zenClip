@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/k-dot-greyz/zenClip/config/schemas/bug-snap.card.json",
+  "title": "BugSnapCard",
+  "description": "Clipboard specimen snapped into a bug card. Target, droid, and enums come from a care package, not the type.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["stage", "sha256", "card_id", "target_ref", "droid_ref", "pressure", "specimen", "diagnosis", "outcome", "timestamp"],
+  "properties": {
+    "stage": { "const": "bug_snap" },
+    "sha256": { "type": "string", "minLength": 64, "maxLength": 64 },
+    "card_id": { "type": "string", "minLength": 1 },
+    "package_id": { "type": "string" },
+    "dance": { "enum": ["solo", "pair", "queue"] },
+    "target_ref": { "type": "string", "description": "Care-package slot. ACME is a value." },
+    "droid_ref": { "type": "string" },
+    "pressure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "type": "string" },
+        "count": { "type": "integer", "minimum": 1 },
+        "window": { "type": "string" }
+      }
+    },
+    "specimen": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref", "content_type"],
+      "properties": {
+        "ref": { "type": "string" },
+        "content_type": { "type": "string" },
+        "at": { "type": "string", "format": "date-time" },
+        "excerpt": { "type": "string", "maxLength": 240 }
+      }
+    },
+    "diagnosis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class", "confidence"],
+      "properties": {
+        "class": { "type": "string" },
+        "hold": { "type": "string" },
+        "break": { "type": "string" },
+        "confidence": { "enum": ["seen", "inferred"] }
+      }
+    },
+    "zap": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "action": { "type": "string" },
+        "status": { "enum": ["proposed", "shipped", "dropped"] }
+      }
+    },
+    "outcome": { "enum": ["snapped", "skipped", "rejected", "pending_hand"] },
+    "midi_cc": { "type": "integer", "minimum": 0, "maximum": 127 },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "ext": { "type": "object", "additionalProperties": true }
+  }
+}
