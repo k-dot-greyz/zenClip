@@ -1,0 +1,30 @@
+{
+  "package_id": "acme-support",
+  "target_ref": "acme",
+  "enabled": false,
+  "dance": "queue",
+  "droid_ref": "support.tier0",
+  "matchers": [
+    { "kind": "host", "value": "support.example" },
+    { "kind": "content_type", "value": "url" }
+  ],
+  "pressure": {
+    "kinds": ["repeat", "sludge", "contradiction", "jailbreak", "empty", "other"],
+    "default_kind": "repeat",
+    "window": "PT24H"
+  },
+  "bug_classes": ["droid_miss", "product_bug", "policy_gap", "user_abuse", "unknown"],
+  "default_class": "unknown",
+  "zap_default": "none",
+  "midi": {
+    "cc": 25,
+    "value_on_snap": 127,
+    "value_on_skip": 0
+  },
+  "hydration": {
+    "auto": ["card_id", "sha256", "target_ref", "droid_ref", "specimen.ref", "specimen.content_type", "specimen.at", "pressure.count", "confidence"],
+    "hand": ["diagnosis.hold", "diagnosis.break", "diagnosis.class", "zap.action"],
+    "excerpt_max": 240,
+    "store_body": false
+  }
+}
