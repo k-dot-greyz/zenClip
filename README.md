@@ -12,10 +12,13 @@ Part of the **zenOS** ecosystem. MIDI as universal communication layer.
 Clipboard Event (text/image/url/audio)
     → SHA256 dedup (skip if already seen)
     → Content classifier (type detection)
+    → bug_snap? (care-package match only)
     → MIDI CC/Note emit (via midi-gem)
     → Self-hosted REST API log
     → Optional: trigger downstream zenOS workflows
 ```
+
+Bug snap is off unless a care package matches. No match, no card. Spec: [docs/bug-snap.md](docs/bug-snap.md).
 
 ## Stack
 
@@ -26,6 +29,7 @@ Clipboard Event (text/image/url/audio)
 | Dedup store | SQLite / SHA256 hash ring |
 | API | FastAPI (self-hosted) |
 | Frontend (optional) | Astro + TypeScript |
+| Snap config | JSON schema + care packages |
 
 ## Features
 
@@ -36,6 +40,8 @@ Clipboard Event (text/image/url/audio)
 - [ ] Self-hosted REST API with clip history
 - [ ] zenOS MIDI integration via midi-gem
 - [ ] Configurable via YAML (mappings, filters, ignore patterns)
+- [ ] Bug snap mode: specimen → card, target from care package
+- [ ] Auto context target: first enabled matcher wins, explicit override beats it
 
 ## MIDI Mapping (default)
 
@@ -46,6 +52,7 @@ Clipboard Event (text/image/url/audio)
 | Image clip | CC#22 | 127 (trigger) |
 | Audio clip | CC#23 | 127 (trigger) |
 | Dedup skip | CC#24 | 0 |
+| Bug snap | package `midi.cc` | package value, not a global CC |
 
 ## Related
 
