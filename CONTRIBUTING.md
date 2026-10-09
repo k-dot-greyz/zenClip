@@ -20,11 +20,12 @@ Monorepo orchestration and submodule workflow docs live in the consuming organiz
 
 ## Architecture expectations (GlitchWorks Agnostic)
 
-zenClip is a **media processing pipeline**: clipboard capture → hash/dedup → content classification → MIDI emit → API persist. When you change behavior, align with these principles.
+zenClip is a **media processing pipeline**: clipboard capture → hash/dedup → content classification → MIDI emit → API persist. When bug snap is enabled and a care package matches, `bug_snap` sits between classify and MIDI. When you change behavior, align with these principles.
 
 ### Zero hardcoding (runtime configuration)
 
 - MIDI CC mappings, API host/port, SQLite paths, ignore patterns, and `midi-gem` endpoints must come from **environment variables**, `zenclip.yaml`, or injected options — never hardcoded in domain logic.
+- Care-package target, droid, matchers, class enums, and snap CC come from `config/care-packages/`. The card type does not name a company.
 - Platform-specific clipboard backends (`arboard`) stay behind a single monitor interface; do not scatter OS checks through classifiers or emitters.
 
 ### Polymorphism at pipeline boundaries
@@ -35,6 +36,7 @@ zenClip is a **media processing pipeline**: clipboard capture → hash/dedup →
   - `IContentClassifier` — text / URL / image / audio detection
   - `IMidiEmitter` — CC/note output via `midi-gem` or local port
   - `IClipLogger` — REST API / stdout sink
+  - `ICarePackage` — target matcher and snap defaults
 - Domain orchestration must not import FastAPI, `arboard`, or HTTP clients directly; wire adapters at the edges.
 
 ### Open piping (typed events)
@@ -53,7 +55,7 @@ zenClip is a **media processing pipeline**: clipboard capture → hash/dedup →
 }
 ```
 
-- Stages: `capture` → `dedup` → `classify` → `midi_emit` → `api_log`. Skipped dedup clips emit `outcome: "skipped"` with CC#24 semantics.
+- Stages: `capture` → `dedup` → `classify` → `bug_snap?` → `midi_emit` → `api_log`. Skipped dedup clips emit `outcome: "skipped"` with CC#24 semantics. Snap cards use `config/schemas/bug-snap.card.json`.
 
 ### Boundary validation (hostile edge)
 
@@ -62,6 +64,7 @@ zenClip is a **media processing pipeline**: clipboard capture → hash/dedup →
   - Normalize MIME hints; do not trust clipboard metadata alone for routing.
 - API routes (`/clips`, `/clips/{sha}`, `/stats`) must validate path params, auth headers, and request bodies with explicit schemas before touching SQLite.
 - MIDI bridge HTTP calls to `midi-gem` must validate response status and JSON shape before updating local state.
+- Care packages fail startup if a matcher kind or bug class is unknown. Do not coerce unknowns to `other`.
 
 ### Media format validation
 
@@ -69,12 +72,14 @@ zenClip is a **media processing pipeline**: clipboard capture → hash/dedup →
 - **Image:** verify magic bytes (PNG, JPEG, GIF, WebP) before treating as image; unknown formats → `binary` or skip with structured log.
 - **Audio:** validate container headers where possible; unsupported codecs → `degraded` outcome, not crash.
 - All validators live at the **pipeline edge**; classifiers receive already-sanitized metadata + byte slices.
+- Snap excerpt is capped by the package. Clip bodies are not written into cards.
 
 ### State hydration and dehydration
 
 - Dedup store and in-memory ring must support `exportState()` / `loadState(payload)` (JSON or SQLite snapshot).
 - Hydration must be **idempotent**: reloading the same snapshot must not duplicate MIDI emits or API rows.
 - CLI and API startup should accept `--state-file` or equivalent for replay and crash recovery tests.
+- Snap hydration is idempotent on sha256. A dedup skip does not mint a second card.
 
 ### Graceful degradation (predictable error recovery)
 
@@ -83,6 +88,7 @@ zenClip is a **media processing pipeline**: clipboard capture → hash/dedup →
   - `midi-gem` offline or timeout
   - API bind failure or disk full on SQLite write
   - Duplicate clip (dedup skip → CC#24 value 0)
+  - No care-package match (bug snap no-op, clip continues)
 - On dependency failure: log structured error, emit telemetry, enter **safe idle** or **degraded mode** (capture + dedup only, no MIDI/API) when configured.
 - Prefer result types (`{ ok, data?, error?, degradedFeatures? }`) over unhandled errors in orchestration code.
 - Retry MIDI/API calls with bounded backoff + jitter; cap retries and surface final state to the caller.
@@ -90,7 +96,7 @@ zenClip is a **media processing pipeline**: clipboard capture → hash/dedup →
 ### Agnostic telemetry
 
 - Inject a logger interface; core logic must not assume journald, Docker, or a specific log shipper.
-- Emit metrics as structured key/value pairs (`clips_captured`, `dedup_skips`, `midi_failures`, `api_latency_ms`).
+- Emit metrics as structured key/value pairs (`clips_captured`, `dedup_skips`, `midi_failures`, `api_latency_ms`, `snaps_pending_hand`).
 
 ---
 
@@ -104,6 +110,9 @@ Current and target paths for the zenClip pipeline. Some directories are **planne
 | `tasks.md` | Public roadmap / epic checklist | Present |
 | `dex-entry.md` | Dex registry metadata (product index) | Present |
 | `CONTRIBUTING.md` | This guide | Present |
+| `docs/bug-snap.md` | Bug snap mode and care-package architecture | Present |
+| `config/schemas/bug-snap.card.json` | Snap card schema | Present |
+| `config/care-packages/` | Auto context target packages | Present |
 | `crates/zenclip-core/` | Rust clipboard watcher, SHA256 dedup, JSON event emit | Planned |
 | `config/zenclip.yaml` | CC mappings, filters, ignore patterns, endpoint URLs | Planned |
 | `bridge/` | JSON → `midi-gem` HTTP adapter | Planned |
@@ -195,6 +204,8 @@ Required scenarios:
 | Clipboard permission denied | Structured error, clean exit or idle loop |
 | Invalid `zenclip.yaml` | Fail fast at startup with parse error message |
 | State reload after crash | Idempotent hydration, no duplicate emits |
+| Unknown care-package matcher | Fail fast, do not coerce |
+| No package match | Snap no-op, clip continues |
 
 ### 5. Python API checks (when `api/` exists)
 
@@ -264,6 +275,7 @@ Examples:
 ## Security and privacy
 
 - zenClip processes clipboard content locally. Never log raw clip bodies in production telemetry unless explicitly opted in.
+- Snap cards store a ref and a capped excerpt, not the clip body.
 - API keys protect the self-hosted REST surface — do not commit or log them.
 - Report vulnerabilities privately to the maintainers when possible.
 
