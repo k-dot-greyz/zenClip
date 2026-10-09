@@ -25,3 +25,16 @@
 - [ ] Astro + TypeScript frontend
 - [ ] Live clip feed via SSE
 - [ ] MIDI visualizer panel
+
+## Epic: ZENCLIP-SNAP-001 — Bug snap mode
+
+- [x] Card schema `config/schemas/bug-snap.card.json`
+- [x] Care package example `config/care-packages/acme.example.json`
+- [x] Architecture `docs/bug-snap.md`
+- [ ] Load packages at startup, fail on unknown matcher or class
+- [ ] Matcher: host, content_type, prefix. First enabled wins
+- [ ] Explicit `target_ref` override beats matcher
+- [ ] Auto-fill pointer fields only. Judgment stays `pending_hand`
+- [ ] No clip body persisted. Excerpt cap from package
+- [ ] Snap MIDI CC from package, not CC#20–24
+- [ ] Pair dance rejects a merged card
