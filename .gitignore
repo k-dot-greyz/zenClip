@@ -1,0 +1,16 @@
+/target
+**/*.rs.bk
+.idea/
+.vscode/
+*.swp
+
+# Local runtime state — never commit captures or keys
+/inbox/
+**/.zenclip-inbox/
+config/zenclip.yaml
+*.sqlite
+.env
+.env.*
+
+# macOS
+.DS_Store

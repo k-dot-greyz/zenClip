@@ -1,0 +1,38 @@
+[package]
+name = "zenclip"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "WYSIWYG media yoink: capture or re-render pixels, emit a metadata-free PNG, ingest by SHA256."
+readme = "../../README.md"
+
+[[bin]]
+name = "zenclip"
+path = "src/main.rs"
+
+[features]
+default = ["live-capture", "clipboard", "http"]
+live-capture = ["dep:xcap"]
+clipboard = ["dep:arboard"]
+http = ["dep:ureq"]
+
+[dependencies]
+clap = { version = "4.5", features = ["derive", "env"] }
+hex = "0.4"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp"] }
+png = "0.17"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+sha2 = "0.10"
+thiserror = "2.0"
+url = "2.5"
+
+arboard = { version = "3.4", optional = true }
+ureq = { version = "2.12", optional = true, features = ["tls"] }
+xcap = { version = "0.4", optional = true }
+
+[dev-dependencies]
+tempfile = "3.13"
