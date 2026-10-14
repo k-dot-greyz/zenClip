@@ -16,5 +16,6 @@ Vitest covers:
 - `loadEngine` MOCK fallback
 - UI result/error copy
 - File-type heuristic for upload fallback
+- **`CaptureIsland` integration** (`ZCW-PR3-*` stories): mount, display capture, upload rejection, paste ablation, XSS-safe errors, object-URL revoke — see `docs/test-coverage-decision-log-pr3.md`
 
 Run: `npm test` then `npm run typecheck` then `npm run build`.
