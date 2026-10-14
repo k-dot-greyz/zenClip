@@ -1,0 +1,23 @@
+# zenClip v0.1 — copy to zenclip.yaml (gitignored) and edit.
+# Nothing in this file is sent anywhere. No cloud. No telemetry.
+
+# Content-addressed inbox. Files are named {sha256}.png
+inbox_dir: inbox
+
+# Sidecar JSON sits *next to* the PNG. The PNG itself never gets this record.
+write_sidecar: true
+sidecar:
+  capture_time: true   # unix seconds; set false to omit
+  source_kind: true    # shot.full / yoink.file / ...
+  dimensions: true     # width/height in pixels
+
+# Max bytes fetched for `zenclip yoink https://...`
+max_yoink_bytes: 20971520
+
+# Optional generic HTTP POST of the PNG body. Disabled by default.
+# This is NOT the zenOS inbox-ingestion contract (unknown here).
+# Set ZENCLIP_SINK_KEY for the API key header value.
+http_post:
+  enabled: false
+  url: null
+  api_key_header: X-Api-Key
