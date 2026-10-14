@@ -1,0 +1,36 @@
+name: zenclip-web
+
+on:
+  pull_request:
+    paths:
+      - 'apps/zenclip-web/**'
+      - '.github/workflows/zenclip-web.yml'
+  push:
+    paths:
+      - 'apps/zenclip-web/**'
+      - '.github/workflows/zenclip-web.yml'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git init
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth 1 origin "$GITHUB_SHA"
+          git checkout --force FETCH_HEAD
+      - name: Install Node 22
+        run: |
+          curl -fsSL https://nodejs.org/dist/v22.14.0/node-v22.14.0-linux-x64.tar.xz | tar -xJ
+          echo "$PWD/node-v22.14.0-linux-x64/bin" >> "$GITHUB_PATH"
+      - name: typecheck, test, build
+        working-directory: apps/zenclip-web
+        run: |
+          node --version
+          npm ci
+          npm run typecheck
+          npm test
+          npm run build

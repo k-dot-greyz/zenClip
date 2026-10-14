@@ -1,0 +1,73 @@
+---
+import '../styles/global.css';
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="zenClip web capture: display, file, or paste to PNG. Shows sanitize dimensions, sha256, and removed chunks."
+    />
+    <title>zenClip web</title>
+  </head>
+  <body>
+    <a class="skip" href="#capture">Skip to capture</a>
+    <main class="page">
+      <h1>zenClip web</h1>
+      <p class="lede">
+        Grab pixels, emit PNG bytes, run them through the sanitize engine, and inspect the
+        result. Display capture is the main path. File upload and paste are fallbacks. Ingest
+        and sink are out of scope here.
+      </p>
+
+      <section class="panel" aria-labelledby="engine-heading">
+        <h2 id="engine-heading">Engine</h2>
+        <p class="engine" data-engine-status id="engine-status">Loading engine…</p>
+      </section>
+
+      <section class="panel" id="capture" aria-labelledby="capture-heading">
+        <h2 id="capture-heading">Capture</h2>
+        <p>
+          Display capture uses <code>getDisplayMedia</code>, draws one frame to a canvas, and
+          encodes PNG bytes. Then the engine sanitizes that buffer.
+        </p>
+        <div class="actions">
+          <button type="button" data-capture>Capture display</button>
+          <label class="file">
+            Upload image
+            <input data-file type="file" accept="image/png,image/jpeg,image/webp,image/gif,.png,.jpg,.jpeg,.webp,.gif" />
+          </label>
+        </div>
+        <p data-paste-hint>
+          Paste fallback: focus this page and paste an image from the clipboard
+          (<kbd>Ctrl</kbd>+<kbd>V</kbd> or <kbd>Cmd</kbd>+<kbd>V</kbd>).
+        </p>
+        <p class="status" data-status role="status" aria-live="polite">Idle.</p>
+      </section>
+
+      <section class="panel" data-result hidden aria-labelledby="result-heading">
+        <h2 id="result-heading">Sanitize result</h2>
+        <img class="preview" data-preview alt="" hidden width="640" height="360" />
+        <dl>
+          <dt>Dimensions</dt>
+          <dd data-dimensions></dd>
+          <dt>SHA-256</dt>
+          <dd data-sha256></dd>
+          <dt>Removed chunks</dt>
+          <dd data-chunks></dd>
+        </dl>
+      </section>
+    </main>
+    <script>
+      import { mountCaptureApp } from '../ui/CaptureIsland';
+
+      const root = document.querySelector('main');
+      if (root instanceof HTMLElement) {
+        void mountCaptureApp(root);
+      }
+    </script>
+  </body>
+</html>
