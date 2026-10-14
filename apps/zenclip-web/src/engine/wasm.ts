@@ -19,9 +19,6 @@ type WasmBindgenModule = {
  * Build (when the crate exists):
  *   wasm-pack build crates/zenclip-wasm --target web --release
  *
- * The wasm `sanitize(png)` export should wrap `zenclip::sanitize_png_bytes`
- * (png, sha256, width, height, removed_chunks). Do not reimplement stripping here.
- *
  * Plug in via npm (`zenclip-wasm`), a git/file path, or PUBLIC_ZENCLIP_WASM.
  * Missing pkg → caller falls back to the labelled MOCK.
  */
