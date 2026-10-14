@@ -1,0 +1,30 @@
+# dependencies
+node_modules
+
+# environment variables
+.env*
+!.env.example
+
+# build output
+dist/
+
+# generated types
+.astro/
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# macOS
+.DS_Store
+
+# jetbrains
+.idea/
+
+# local scratch (Playwright upload fixtures)
+tmp/
+
+# editor
+.vscode/
