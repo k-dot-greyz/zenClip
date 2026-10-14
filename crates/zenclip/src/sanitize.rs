@@ -90,6 +90,42 @@ pub fn reencode_from_bytes(encoded: &[u8]) -> Result<Vec<u8>> {
     encode_clean_png(&frame)
 }
 
+/// Report matching `apps/zenclip-web` `ZenClipEngine.sanitize()`:
+/// `{ png, sha256, width, height, removedChunks }`.
+///
+/// PNG in, PNG out. A future `crates/zenclip-wasm` crate should wrap this
+/// 1:1 (`wasm-pack build crates/zenclip-wasm --target web --release`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SanitizeReport {
+    pub png: Vec<u8>,
+    pub sha256: String,
+    pub width: u32,
+    pub height: u32,
+    pub removed_chunks: Vec<String>,
+}
+
+pub fn sanitize_png_bytes(png: &[u8]) -> Result<SanitizeReport> {
+    let input_chunks = crate::png_chunks::chunk_types(png)?;
+    let mut removed_chunks = Vec::new();
+    for ty in &input_chunks {
+        if !crate::png_chunks::is_allowed_chunk(ty) {
+            let name = String::from_utf8_lossy(ty).into_owned();
+            if !removed_chunks.iter().any(|n| n == &name) {
+                removed_chunks.push(name);
+            }
+        }
+    }
+    let frame = decode_to_frame(png)?;
+    let out = encode_clean_png(&frame)?;
+    Ok(SanitizeReport {
+        sha256: crate::hash::sha256_hex(&out),
+        width: frame.width(),
+        height: frame.height(),
+        png: out,
+        removed_chunks,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -352,5 +388,26 @@ mod tests {
         let png = encode_clean_png(&frame).unwrap();
         let back = decode_to_frame(&png).unwrap();
         assert_eq!(frame, back);
+    }
+
+    #[test]
+    fn sanitize_png_bytes_lists_removed_chunks_for_web_engine() {
+        let dirty = png_with_text_chunks();
+        let report = sanitize_png_bytes(&dirty).expect("report");
+        crate::png_chunks::assert_clean_png(&report.png).unwrap();
+        assert_eq!(report.sha256, crate::hash::sha256_hex(&report.png));
+        assert_eq!(report.width, 8);
+        assert_eq!(report.height, 8);
+        for name in ["tEXt", "zTXt", "iTXt", "tIME"] {
+            assert!(
+                report.removed_chunks.iter().any(|c| c == name),
+                "expected {name} in {:?}",
+                report.removed_chunks
+            );
+        }
+        assert!(!report
+            .removed_chunks
+            .iter()
+            .any(|c| c == "IHDR" || c == "IDAT"));
     }
 }

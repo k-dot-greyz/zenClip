@@ -18,10 +18,16 @@ jobs:
     name: fmt, clippy, test
     runs-on: ubuntu-latest
     steps:
-      # If this marketplace action hits startup_failure, replace it with a
-      # `run:` clone of $GITHUB_REPOSITORY at $GITHUB_SHA (see PR notes).
+      # Match zenclip-web.yml: marketplace `uses:` (including checkout) has
+      # hit startup_failure on this org. Plain git fetch is enough.
       - name: Checkout repository
-        uses: actions/checkout@v4
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git init
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth 1 origin "$GITHUB_SHA"
+          git checkout --force FETCH_HEAD
 
       - name: Install X11/xcb headers (xcap compile, even if tests are mock)
         run: |

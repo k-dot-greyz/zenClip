@@ -22,4 +22,6 @@ pub use ingest::{HttpPostSink, InboxFolderSink, IngestSink, NullSink};
 pub use pipeline::process_frame;
 pub use pixels::RgbaFrame;
 pub use record::{ClipEvent, ClipRecord, Outcome, SourceKind};
-pub use sanitize::{decode_to_frame, encode_clean_png, reencode_from_bytes};
+pub use sanitize::{
+    decode_to_frame, encode_clean_png, reencode_from_bytes, sanitize_png_bytes, SanitizeReport,
+};
