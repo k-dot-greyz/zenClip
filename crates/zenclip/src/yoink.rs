@@ -119,4 +119,35 @@ mod tests {
             other => panic!("unexpected {other}"),
         }
     }
+
+    #[cfg(feature = "http")]
+    #[test]
+    fn yoink_url_rejects_oversize_payload() {
+        use std::io::Write;
+        use std::net::TcpListener;
+        use std::thread;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let body = vec![0xFFu8; 32];
+            let resp = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
+            stream.write_all(resp.as_bytes()).unwrap();
+            stream.write_all(&body).unwrap();
+        });
+
+        let err = yoink_url(&format!("http://{addr}/big.bin"), 16).unwrap_err();
+        match err {
+            ZenclipError::Oversize { size, max } => {
+                assert_eq!(max, 16);
+                assert!(size > max);
+            }
+            other => panic!("expected oversize, got {other}"),
+        }
+        handle.join().unwrap();
+    }
 }

@@ -129,6 +129,7 @@ pub fn sanitize_png_bytes(png: &[u8]) -> Result<SanitizeReport> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::ZenclipError;
     use crate::png_chunks::{chunk_types, parse_chunks, FORBIDDEN_CHUNKS};
 
     const GPS_CANARY: &str = "SECRET_GPS_CANARY_56N_24E";
@@ -388,6 +389,16 @@ mod tests {
         let png = encode_clean_png(&frame).unwrap();
         let back = decode_to_frame(&png).unwrap();
         assert_eq!(frame, back);
+    }
+
+    #[test]
+    fn decode_rejects_empty_and_non_image_bytes() {
+        assert!(matches!(
+            decode_to_frame(&[]),
+            Err(ZenclipError::EmptyFrame)
+        ));
+        let err = decode_to_frame(b"not an image").unwrap_err();
+        assert!(err.to_string().contains("invalid image"), "{err}");
     }
 
     #[test]

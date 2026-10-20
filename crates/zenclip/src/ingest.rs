@@ -51,14 +51,35 @@ impl InboxFolderSink {
     pub fn sidecar_path(&self, sha256: &str) -> PathBuf {
         self.dir.join(format!("{sha256}.json"))
     }
+
+    fn assert_content_addressed(sha256: &str, png: &[u8]) -> Result<()> {
+        if !crate::hash::is_valid_sha256_hex(sha256) {
+            return Err(ZenclipError::InvalidFrame(
+                "sha256 must be 64 hex characters (content-addressed ingest)",
+            ));
+        }
+        let actual = crate::hash::sha256_hex(png);
+        if actual != sha256 {
+            return Err(ZenclipError::InvalidFrame(
+                "png bytes do not match record.sha256",
+            ));
+        }
+        Ok(())
+    }
 }
 
 impl IngestSink for InboxFolderSink {
     fn contains(&self, sha256: &str) -> Result<bool> {
+        if !crate::hash::is_valid_sha256_hex(sha256) {
+            return Err(ZenclipError::InvalidFrame(
+                "sha256 must be 64 hex characters (content-addressed ingest)",
+            ));
+        }
         Ok(self.png_path(sha256).exists())
     }
 
     fn put(&self, png: &[u8], record: &ClipRecord) -> Result<PutResult> {
+        Self::assert_content_addressed(&record.sha256, png)?;
         let dest = self.png_path(&record.sha256);
         if dest.exists() {
             return Ok(PutResult { path: Some(dest) });
@@ -153,6 +174,7 @@ impl IngestSink for HttpPostSink {
     }
 
     fn put(&self, png: &[u8], record: &ClipRecord) -> Result<PutResult> {
+        InboxFolderSink::assert_content_addressed(&record.sha256, png)?;
         #[cfg(feature = "http")]
         {
             let mut req = ureq::post(&self.url)
@@ -311,6 +333,20 @@ mod tests {
     }
 
     #[test]
+    fn http_sink_rejects_enabled_without_url() {
+        let cfg = Config {
+            http_post: crate::config::HttpPostConfig {
+                enabled: true,
+                url: Some(String::new()),
+                api_key_header: "X-Api-Key".into(),
+            },
+            ..Config::default()
+        };
+        let err = HttpPostSink::from_config(&cfg).unwrap_err();
+        assert!(err.to_string().contains("url is empty"), "{err}");
+    }
+
+    #[test]
     fn dry_run_writes_nothing() {
         let dir = tempfile::tempdir().unwrap();
         let sink = InboxFolderSink::new(dir.path(), true).unwrap();
@@ -318,6 +354,43 @@ mod tests {
         let event = ingest_png(&png, rec(&sha), &sink, true).unwrap();
         assert_eq!(event.outcome, Outcome::DryRun);
         assert!(!sink.png_path(&sha).exists());
+    }
+
+    #[test]
+    fn rejects_path_traversal_in_content_hash() {
+        let dir = tempfile::tempdir().unwrap();
+        let sink = InboxFolderSink::new(dir.path(), false).unwrap();
+        let (png, _) = sample_png();
+        let evil = ClipRecord {
+            sha256: "../../../tmp/evil00000000000000000000000000000000000000000000".into(),
+            width: Some(2),
+            height: Some(2),
+            source: Some(SourceKind::Replay),
+            captured_at: None,
+        };
+        let err = sink.put(&png, &evil).unwrap_err();
+        assert!(err.to_string().contains("64 hex"), "{err}");
+        assert!(
+            !std::path::Path::new("/tmp/evil00000000000000000000000000000000000000000000.png")
+                .exists()
+        );
+    }
+
+    #[test]
+    fn rejects_hash_mismatch_between_png_and_record() {
+        let dir = tempfile::tempdir().unwrap();
+        let sink = InboxFolderSink::new(dir.path(), false).unwrap();
+        let (png, sha) = sample_png();
+        let wrong = ClipRecord {
+            sha256: "0".repeat(64),
+            width: Some(2),
+            height: Some(2),
+            source: Some(SourceKind::Replay),
+            captured_at: None,
+        };
+        assert_ne!(sha, wrong.sha256);
+        let err = sink.put(&png, &wrong).unwrap_err();
+        assert!(err.to_string().contains("do not match"), "{err}");
     }
 
     #[test]

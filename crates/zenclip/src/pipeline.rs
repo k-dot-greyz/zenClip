@@ -61,6 +61,31 @@ mod tests {
     }
 
     #[test]
+    fn sidecar_dimensions_can_be_ablated() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = Config {
+            inbox_dir: dir.path().to_path_buf(),
+            sidecar: crate::config::SidecarConfig {
+                capture_time: false,
+                source_kind: true,
+                dimensions: false,
+            },
+            ..Config::default()
+        };
+        let sink = InboxFolderSink::from_config(&cfg).unwrap();
+        let frame = MockCapture::checkerboard(4, 4).capture_full(None).unwrap();
+        let event = process_frame(&frame, SourceKind::ShotFull, &cfg, &sink, false).unwrap();
+        assert_eq!(event.outcome, crate::record::Outcome::Completed);
+        let side: ClipRecord =
+            serde_json::from_slice(&std::fs::read(sink.sidecar_path(&event.sha256)).unwrap())
+                .unwrap();
+        assert!(side.width.is_none());
+        assert!(side.height.is_none());
+        assert!(side.captured_at.is_none());
+        assert_eq!(side.source, Some(SourceKind::ShotFull));
+    }
+
+    #[test]
     fn region_shot_is_smaller_than_full() {
         let src = MockCapture::checkerboard(32, 16);
         let full = src.capture_full(None).unwrap();
