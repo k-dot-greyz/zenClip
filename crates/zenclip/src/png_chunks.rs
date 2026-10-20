@@ -114,4 +114,22 @@ mod tests {
     fn rejects_non_png() {
         assert!(parse_chunks(b"not a png").is_err());
     }
+
+    #[test]
+    fn rejects_truncated_and_overflow_chunk_lengths() {
+        let sig = PNG_SIGNATURE;
+        // IHDR with length 13 but only 4 bytes of data before EOF
+        let mut truncated = sig.to_vec();
+        truncated.extend_from_slice(&13u32.to_be_bytes());
+        truncated.extend_from_slice(b"IHDR");
+        truncated.extend_from_slice(&[0, 0, 0, 1]);
+        assert!(parse_chunks(&truncated).is_err());
+
+        // Declared chunk length larger than remaining buffer (must not panic).
+        let mut overflow = sig.to_vec();
+        overflow.extend_from_slice(&0xFFFF_FFFFu32.to_be_bytes());
+        overflow.extend_from_slice(b"tEXt");
+        overflow.extend_from_slice(&[0xAA; 8]);
+        assert!(parse_chunks(&overflow).is_err());
+    }
 }

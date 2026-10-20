@@ -5,9 +5,16 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
 
+/// Content-addressed inbox filenames must be exactly 64 ASCII hex digits.
+pub fn is_valid_sha256_hex(s: &str) -> bool {
+    s.len() == 64
+        && s.bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b) || (b'A'..=b'F').contains(&b))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::sha256_hex;
+    use super::{is_valid_sha256_hex, sha256_hex};
 
     #[test]
     fn known_empty_digest() {
@@ -20,5 +27,14 @@ mod tests {
     #[test]
     fn different_bytes_different_hash() {
         assert_ne!(sha256_hex(b"a"), sha256_hex(b"b"));
+    }
+
+    #[test]
+    fn validates_hex_content_hash_shape() {
+        assert!(is_valid_sha256_hex(&sha256_hex(b"zenclip")));
+        assert!(!is_valid_sha256_hex("not-a-hash"));
+        assert!(!is_valid_sha256_hex(
+            "../../../../tmp/evil00000000000000000000000000000000000000000000000000"
+        ));
     }
 }
