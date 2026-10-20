@@ -5,5 +5,6 @@ export default getViteConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    environmentMatchGlobs: [['src/ui/CaptureIsland.test.ts', 'happy-dom']],
   },
 });
