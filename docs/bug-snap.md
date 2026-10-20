@@ -1,14 +1,18 @@
 # Bug snap mode
 
-Clipboard specimen in, bug card out. The mode does not know ACME, Suno, or any other target. A care package supplies the target.
+Clean specimen in, bug card out. The mode does not know ACME, Suno, or any other target. A care package supplies the target.
+
+The v0.1 core is a WYSIWYG PNG pipeline (see README). Snap is **not** wired into the CLI yet. When it is, the specimen is the sanitized PNG's SHA256 — never a clipboard body, never metadata inside the PNG.
 
 ## Where it sits
 
 ```
-capture → dedup → classify → bug_snap? → midi_emit → api_log
+pixels → clean PNG → SHA256 → IngestSink → bug_snap? → (optional later: MIDI from the package)
 ```
 
-`bug_snap` runs only when mode is on and a package matcher hits. No match is a no-op. The clip still flows. Dedup skip does not re-snap.
+`bug_snap` runs only when mode is on and a package matcher hits. No match is a no-op. The PNG still lands in the inbox. Dedup skip does not re-snap.
+
+MIDI CC on the card is package config for a future emitter. It is not part of the v0.1 CLI and does not restore the old CC#20–24 clipboard map.
 
 ## Auto context target
 
