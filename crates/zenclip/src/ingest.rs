@@ -1,8 +1,10 @@
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use crate::config::Config;
 use crate::error::{Result, ZenclipError};
+use crate::hash::require_sha256_hex;
 use crate::record::{ClipEvent, ClipRecord, Outcome};
 
 /// Pluggable content-management destination.
@@ -44,30 +46,46 @@ impl InboxFolderSink {
         &self.dir
     }
 
-    pub fn png_path(&self, sha256: &str) -> PathBuf {
-        self.dir.join(format!("{sha256}.png"))
+    pub fn png_path(&self, sha256: &str) -> Result<PathBuf> {
+        self.inbox_file(sha256, "png")
     }
 
-    pub fn sidecar_path(&self, sha256: &str) -> PathBuf {
-        self.dir.join(format!("{sha256}.json"))
+    pub fn sidecar_path(&self, sha256: &str) -> Result<PathBuf> {
+        self.inbox_file(sha256, "json")
+    }
+
+    /// Join `{inbox}/{sha256}.{ext}` only after the digest is proven safe.
+    fn inbox_file(&self, sha256: &str, ext: &str) -> Result<PathBuf> {
+        let sha = require_sha256_hex(sha256)?;
+        Ok(self.dir.join(format!("{sha}.{ext}")))
+    }
+
+    /// Unique sibling of the destination so concurrent `put`s cannot share
+    /// a single `{sha}.png.partial` and clobber each other mid-write.
+    fn create_partial(dir: &Path, sha256: &str) -> Result<tempfile::NamedTempFile> {
+        Ok(tempfile::Builder::new()
+            .prefix(&format!(".{sha256}."))
+            .suffix(".png.partial")
+            .tempfile_in(dir)?)
     }
 }
 
 impl IngestSink for InboxFolderSink {
     fn contains(&self, sha256: &str) -> Result<bool> {
-        Ok(self.png_path(sha256).exists())
+        Ok(self.png_path(sha256)?.exists())
     }
 
     fn put(&self, png: &[u8], record: &ClipRecord) -> Result<PutResult> {
-        let dest = self.png_path(&record.sha256);
+        let dest = self.png_path(&record.sha256)?;
         if dest.exists() {
             return Ok(PutResult { path: Some(dest) });
         }
-        let tmp = dest.with_extension("png.partial");
-        fs::write(&tmp, png)?;
-        fs::rename(&tmp, &dest)?;
+        let mut tmp = Self::create_partial(&self.dir, &record.sha256)?;
+        tmp.write_all(png)?;
+        tmp.flush()?;
+        tmp.persist(&dest).map_err(|e| e.error)?;
         if self.write_sidecar {
-            let side = self.sidecar_path(&record.sha256);
+            let side = self.sidecar_path(&record.sha256)?;
             fs::write(&side, serde_json::to_vec_pretty(record)?)?;
         }
         Ok(PutResult { path: Some(dest) })
@@ -155,7 +173,7 @@ impl IngestSink for HttpPostSink {
     fn put(&self, png: &[u8], record: &ClipRecord) -> Result<PutResult> {
         #[cfg(feature = "http")]
         {
-            let mut req = ureq::post(&self.url)
+            let mut req = http_post_request(&self.url, self.api_key.is_some())
                 .set("Content-Type", "image/png")
                 .set("X-Zenclip-Sha256", &record.sha256);
             if let Some(w) = record.width {
@@ -184,6 +202,23 @@ impl IngestSink for HttpPostSink {
             let _ = (png, record);
             Err(ZenclipError::HttpDisabled)
         }
+    }
+}
+
+/// Build a POST. Authenticated calls must not follow redirects.
+///
+/// ureq 2 follows 3xx by default (up to 4 hops) and copies *all* request
+/// headers onto the next hop — including our API key. `redirect_auth_headers`
+/// only affects `Authorization` / cookie, not a custom `X-Api-Key`. So when
+/// a key is attached we disable redirects entirely; a 3xx is then a failed
+/// PUT (this sink's contract is 2xx = stored), and the credential never
+/// leaves the original origin.
+#[cfg(feature = "http")]
+fn http_post_request(url: &str, authenticated: bool) -> ureq::Request {
+    if authenticated {
+        ureq::AgentBuilder::new().redirects(0).build().post(url)
+    } else {
+        ureq::post(url)
     }
 }
 
@@ -266,11 +301,11 @@ mod tests {
         let (png, sha) = sample_png();
         let event = ingest_png(&png, rec(&sha), &sink, false).unwrap();
         assert_eq!(event.outcome, Outcome::Completed);
-        let dest = sink.png_path(&sha);
+        let dest = sink.png_path(&sha).unwrap();
         assert!(dest.exists());
         assert_eq!(fs::read(&dest).unwrap(), png);
         let side: ClipRecord =
-            serde_json::from_slice(&fs::read(sink.sidecar_path(&sha)).unwrap()).unwrap();
+            serde_json::from_slice(&fs::read(sink.sidecar_path(&sha).unwrap()).unwrap()).unwrap();
         assert_eq!(side.sha256, sha);
         assert_eq!(side.width, Some(2));
         // PNG must not contain the sidecar's source tag as a text chunk.
@@ -306,8 +341,8 @@ mod tests {
         let sink = InboxFolderSink::new(dir.path(), false).unwrap();
         let (png, sha) = sample_png();
         ingest_png(&png, rec(&sha), &sink, false).unwrap();
-        assert!(sink.png_path(&sha).exists());
-        assert!(!sink.sidecar_path(&sha).exists());
+        assert!(sink.png_path(&sha).unwrap().exists());
+        assert!(!sink.sidecar_path(&sha).unwrap().exists());
     }
 
     #[test]
@@ -317,7 +352,7 @@ mod tests {
         let (png, sha) = sample_png();
         let event = ingest_png(&png, rec(&sha), &sink, true).unwrap();
         assert_eq!(event.outcome, Outcome::DryRun);
-        assert!(!sink.png_path(&sha).exists());
+        assert!(!sink.png_path(&sha).unwrap().exists());
     }
 
     #[test]
@@ -336,8 +371,92 @@ mod tests {
         assert_ne!(sha_a, sha_b);
         ingest_png(&png_a, rec(&sha_a), &sink, false).unwrap();
         ingest_png(&png_b, rec(&sha_b), &sink, false).unwrap();
-        assert!(sink.png_path(&sha_a).exists());
-        assert!(sink.png_path(&sha_b).exists());
+        assert!(sink.png_path(&sha_a).unwrap().exists());
+        assert!(sink.png_path(&sha_b).unwrap().exists());
+    }
+
+    fn assert_invalid_sha256(err: ZenclipError, expected: &str) {
+        match err {
+            ZenclipError::InvalidSha256 { value } => assert_eq!(value, expected),
+            other => panic!("unexpected {other}"),
+        }
+    }
+
+    #[test]
+    fn inbox_put_rejects_path_traversal_and_non_hex_sha256() {
+        let root = tempfile::tempdir().unwrap();
+        let inbox = root.path().join("inbox");
+        let sink = InboxFolderSink::new(&inbox, true).unwrap();
+        let (png, _) = sample_png();
+
+        for bad in [
+            "../escaped",
+            "not-a-hash",
+            "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+        ] {
+            assert_invalid_sha256(sink.put(&png, &rec(bad)).unwrap_err(), bad);
+            assert_invalid_sha256(sink.contains(bad).unwrap_err(), bad);
+            assert_invalid_sha256(sink.png_path(bad).unwrap_err(), bad);
+        }
+
+        assert!(!root.path().join("escaped.png").exists());
+        assert!(!root.path().join("escaped.json").exists());
+        assert!(!inbox.join("../escaped.png").exists());
+        let leftover = fs::read_dir(&inbox)
+            .unwrap()
+            .filter(|e| e.as_ref().unwrap().path().is_file())
+            .count();
+        assert_eq!(leftover, 0, "rejected sha256 must not write into the inbox");
+    }
+
+    #[test]
+    fn inbox_partial_temp_names_are_unique_per_write() {
+        let dir = tempfile::tempdir().unwrap();
+        let sha = "ab".repeat(32);
+        let a = InboxFolderSink::create_partial(dir.path(), &sha).unwrap();
+        let b = InboxFolderSink::create_partial(dir.path(), &sha).unwrap();
+        assert_ne!(a.path(), b.path());
+        assert_eq!(a.path().parent(), Some(dir.path()));
+        assert_eq!(b.path().parent(), Some(dir.path()));
+        for path in [a.path(), b.path()] {
+            let name = path.file_name().unwrap().to_string_lossy();
+            assert!(name.ends_with(".png.partial"), "{name}");
+            assert!(name.contains(&sha), "{name}");
+        }
+    }
+
+    #[test]
+    fn concurrent_puts_do_not_share_a_partial_or_corrupt_dest() {
+        let dir = tempfile::tempdir().unwrap();
+        let sink = InboxFolderSink::new(dir.path(), false).unwrap();
+        let (png_a, sha_a) = sample_png();
+        let frame_b = RgbaFrame::new(
+            2,
+            2,
+            vec![1, 2, 3, 255, 1, 2, 3, 255, 1, 2, 3, 255, 1, 2, 3, 255],
+        )
+        .unwrap();
+        let png_b = encode_clean_png(&frame_b).unwrap();
+        let sha_b = crate::hash::sha256_hex(&png_b);
+
+        std::thread::scope(|scope| {
+            for _ in 0..8 {
+                scope.spawn(|| sink.put(&png_a, &rec(&sha_a)).unwrap());
+                scope.spawn(|| sink.put(&png_b, &rec(&sha_b)).unwrap());
+            }
+        });
+
+        assert_eq!(fs::read(sink.png_path(&sha_a).unwrap()).unwrap(), png_a);
+        assert_eq!(fs::read(sink.png_path(&sha_b).unwrap()).unwrap(), png_b);
+        for entry in fs::read_dir(dir.path()).unwrap() {
+            let name = entry.unwrap().file_name().into_string().unwrap();
+            assert!(
+                !name.contains("partial"),
+                "leftover partial after persist: {name}"
+            );
+        }
     }
 
     #[cfg(feature = "http")]
@@ -413,5 +532,84 @@ mod tests {
         let event = ingest_png(&png, rec(&sha), &sink, false).unwrap();
         assert_eq!(event.outcome, Outcome::Completed);
         handle.join().unwrap();
+    }
+
+    #[cfg(feature = "http")]
+    #[test]
+    fn http_post_authenticated_does_not_follow_redirect_with_api_key() {
+        use std::io::Write;
+        use std::net::TcpListener;
+        use std::sync::mpsc;
+        use std::thread;
+        use std::time::Duration;
+
+        let bounce = TcpListener::bind("127.0.0.1:0").unwrap();
+        let steal = TcpListener::bind("127.0.0.1:0").unwrap();
+        steal
+            .set_nonblocking(true)
+            .expect("redirect target accept timeout");
+        let bounce_addr = bounce.local_addr().unwrap();
+        let steal_addr = steal.local_addr().unwrap();
+        let (png, sha) = sample_png();
+
+        let bounce_handle = thread::spawn(move || {
+            let (mut stream, _) = bounce.accept().unwrap();
+            let buf = read_http_request(&mut stream);
+            let split = buf
+                .windows(4)
+                .position(|w| w == b"\r\n\r\n")
+                .expect("header/body split");
+            let headers = String::from_utf8_lossy(&buf[..split]);
+            assert!(
+                headers.contains("X-Api-Key: leak-me"),
+                "original hop must still send the key: {headers}"
+            );
+            let body = format!(
+                "HTTP/1.1 302 Found\r\nLocation: http://{steal_addr}/stolen\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            );
+            stream.write_all(body.as_bytes()).unwrap();
+        });
+
+        let (tx, rx) = mpsc::channel();
+        let steal_handle = thread::spawn(move || {
+            let deadline = std::time::Instant::now() + Duration::from_millis(400);
+            let mut contacted = false;
+            while std::time::Instant::now() < deadline {
+                match steal.accept() {
+                    Ok((mut stream, _)) => {
+                        let _ = read_http_request(&mut stream);
+                        contacted = true;
+                        break;
+                    }
+                    Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                        thread::sleep(Duration::from_millis(20));
+                    }
+                    Err(err) => panic!("redirect target accept: {err}"),
+                }
+            }
+            tx.send(contacted).unwrap();
+        });
+
+        let sink = HttpPostSink::new(
+            format!("http://{bounce_addr}/ingest"),
+            "X-Api-Key",
+            Some("leak-me".into()),
+        );
+        let err = ingest_png(&png, rec(&sha), &sink, false).unwrap_err();
+        match err {
+            ZenclipError::Http(msg) => {
+                assert!(
+                    msg.contains("302") || msg.contains("redirect") || msg.contains("3"),
+                    "expected 302 failure, got {msg}"
+                );
+            }
+            other => panic!("unexpected {other}"),
+        }
+        bounce_handle.join().unwrap();
+        steal_handle.join().unwrap();
+        assert!(
+            !rx.recv().unwrap(),
+            "authenticated POST followed a redirect; API key would leak to the Location host"
+        );
     }
 }
