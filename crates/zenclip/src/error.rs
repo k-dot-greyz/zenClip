@@ -36,6 +36,9 @@ pub enum ZenclipError {
     #[error("unsupported URL scheme '{scheme}' (http/https only)")]
     UnsupportedUrlScheme { scheme: String },
 
+    #[error("invalid sha256 {value:?}: expected exactly 64 lowercase hex characters")]
+    InvalidSha256 { value: String },
+
     #[error("yoink payload {size} bytes exceeds max {max}")]
     Oversize { size: u64, max: u64 },
 
